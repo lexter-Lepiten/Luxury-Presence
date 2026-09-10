@@ -1,229 +1,775 @@
-const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+(() => {
+  'use strict';
 
-/* ---------- Nav scroll state + mobile menu ---------- */
-const header = document.getElementById('siteHeader');
-const menuBtn = document.getElementById('menuBtn');
-window.addEventListener('scroll', () => {
-  header.classList.toggle('scrolled', window.scrollY > 40);
-});
-menuBtn.addEventListener('click', () => {
-  const open = header.classList.toggle('mobile-open');
-  menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-});
-document.querySelectorAll('nav.links a').forEach(a => {
-  a.addEventListener('click', () => {
-    header.classList.remove('mobile-open');
-    menuBtn.setAttribute('aria-expanded', 'false');
-  });
-});
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/* ---------- Active nav link on scroll ---------- */
-const navLinkEls = document.querySelectorAll('#navLinks a');
-const navSections = ['overview', 'gallery', 'calculator', 'agent', 'contact']
-  .map(id => document.getElementById(id)).filter(Boolean);
-const navObserver = new IntersectionObserver((entries) => {
-  entries.forEach(entry => {
-    if (entry.isIntersecting) {
-      navLinkEls.forEach(a => a.classList.toggle('active', a.dataset.nav === entry.target.id));
-    }
-  });
-}, { rootMargin: '-45% 0px -50% 0px', threshold: 0 });
-navSections.forEach(sec => navObserver.observe(sec));
+  /* Header + mobile navigation */
+  const header = document.getElementById('siteHeader');
+  const menuBtn = document.getElementById('menuBtn');
+  const navLinks = document.getElementById('navLinks');
 
-/* ---------- Back to top ---------- */
-const toTop = document.getElementById('toTop');
-window.addEventListener('scroll', () => {
-  toTop.classList.toggle('show', window.scrollY > 700);
-});
-toTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  const updateHeader = () => {
+    if (header) header.classList.toggle('scrolled', window.scrollY > 35);
+  };
 
-/* ---------- Reveal on scroll (single orchestrated pattern) ---------- */
-const revealEls = document.querySelectorAll('.reveal');
-const io = new IntersectionObserver((entries) => {
-  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
-}, { threshold: 0.2 });
-revealEls.forEach(el => io.observe(el));
+  updateHeader();
+  window.addEventListener('scroll', updateHeader, { passive: true });
 
-/* ---------- Detail tabs (Overview / Amenities / Floor plan / Neighborhood) ---------- */
-const tabBtns = document.querySelectorAll('.tab-btn');
-const tabPanels = document.querySelectorAll('.tab-panel');
-const tabIndicator = document.getElementById('tabIndicator');
-const tabNav = document.querySelector('.tab-nav');
-
-function moveIndicator(btn) {
-  if (!btn || !tabIndicator || !tabNav) return;
-  const navRect = tabNav.getBoundingClientRect();
-  const btnRect = btn.getBoundingClientRect();
-  tabIndicator.style.left = (btnRect.left - navRect.left) + 'px';
-  tabIndicator.style.width = btnRect.width + 'px';
-}
-
-function activateTab(tabName) {
-  tabBtns.forEach(b => {
-    const active = b.dataset.tab === tabName;
-    b.classList.toggle('active', active);
-    b.setAttribute('aria-selected', active ? 'true' : 'false');
-    if (active) moveIndicator(b);
-  });
-  tabPanels.forEach(p => {
-    const active = p.id === 'panel-' + tabName;
-    p.classList.toggle('active', active);
-    p.hidden = !active;
-  });
-}
-
-tabBtns.forEach(btn => {
-  btn.addEventListener('click', () => activateTab(btn.dataset.tab));
-});
-window.addEventListener('resize', () => {
-  const active = document.querySelector('.tab-btn.active');
-  moveIndicator(active);
-});
-// Initialize indicator position once fonts/layout settle
-window.addEventListener('load', () => moveIndicator(document.querySelector('.tab-btn.active')));
-requestAnimationFrame(() => moveIndicator(document.querySelector('.tab-btn.active')));
-
-/* ---------- Gallery filter ---------- */
-const filterBtns = document.querySelectorAll('.gallery-filter button');
-const galleryFigures = document.querySelectorAll('#galleryGrid figure');
-const galleryCountEl = document.getElementById('galleryCount');
-
-function updateGalleryCount(cat) {
-  const visible = Array.from(galleryFigures).filter(fig => cat === 'all' || fig.dataset.category === cat);
-  if (!galleryCountEl) return;
-  const catLabels = { all: 'photos', community: 'community photos', homes: 'exterior photos', interiors: 'interior photos' };
-  galleryCountEl.textContent = visible.length + ' ' + (catLabels[cat] || 'photos');
-}
-
-filterBtns.forEach(btn => {
-  btn.addEventListener('click', () => {
-    filterBtns.forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    const cat = btn.dataset.filter;
-    galleryFigures.forEach(fig => {
-      const show = cat === 'all' || fig.dataset.category === cat;
-      fig.classList.toggle('hidden', !show);
+  if (menuBtn && header && navLinks) {
+    menuBtn.addEventListener('click', () => {
+      const open = header.classList.toggle('mobile-open');
+      menuBtn.setAttribute('aria-expanded', String(open));
+      menuBtn.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
+      document.body.classList.toggle('menu-lock', open);
     });
-    updateGalleryCount(cat);
-  });
-});
-updateGalleryCount('all');
 
-/* ---------- Gallery lightbox ---------- */
-const lightbox = document.getElementById('lightbox');
-const lightboxImg = document.getElementById('lightboxImg');
-const lightboxCap = document.getElementById('lightboxCap');
-const lightboxCount = document.getElementById('lightboxCount');
-const lightboxPrev = document.getElementById('lightboxPrev');
-const lightboxNext = document.getElementById('lightboxNext');
-const allFigures = Array.from(document.querySelectorAll('#galleryGrid figure'));
-let currentIndex = 0;
-
-function openLightboxAt(index) {
-  const visibleFigures = allFigures.filter(f => !f.classList.contains('hidden'));
-  if (!visibleFigures.length) return;
-  currentIndex = ((index % visibleFigures.length) + visibleFigures.length) % visibleFigures.length;
-  const fig = visibleFigures[currentIndex];
-  const img = fig.querySelector('img');
-  lightboxImg.src = img.src;
-  lightboxImg.alt = img.alt;
-  lightboxCap.textContent = fig.dataset.cap || '';
-  lightboxCount.textContent = (currentIndex + 1) + ' / ' + visibleFigures.length;
-  lightbox.classList.add('open');
-}
-
-allFigures.forEach((fig) => {
-  fig.addEventListener('click', () => {
-    const visibleFigures = allFigures.filter(f => !f.classList.contains('hidden'));
-    openLightboxAt(visibleFigures.indexOf(fig));
-  });
-});
-
-document.getElementById('lightboxClose').addEventListener('click', () => lightbox.classList.remove('open'));
-lightbox.addEventListener('click', (e) => { if (e.target === lightbox) lightbox.classList.remove('open'); });
-lightboxPrev.addEventListener('click', (e) => { e.stopPropagation(); openLightboxAt(currentIndex - 1); });
-lightboxNext.addEventListener('click', (e) => { e.stopPropagation(); openLightboxAt(currentIndex + 1); });
-document.addEventListener('keydown', (e) => {
-  if (!lightbox.classList.contains('open')) return;
-  if (e.key === 'Escape') lightbox.classList.remove('open');
-  if (e.key === 'ArrowLeft') openLightboxAt(currentIndex - 1);
-  if (e.key === 'ArrowRight') openLightboxAt(currentIndex + 1);
-});
-
-/* ---------- Mortgage calculator ---------- */
-const calcPrice = document.getElementById('calcPrice');
-const calcDown = document.getElementById('calcDown');
-const calcRate = document.getElementById('calcRate');
-const calcPriceOut = document.getElementById('calcPriceOut');
-const calcDownOut = document.getElementById('calcDownOut');
-const calcRateOut = document.getElementById('calcRateOut');
-const calcResult = document.getElementById('calcResult');
-const termBtns = document.querySelectorAll('.term-btn');
-let loanTermYears = 30;
-
-function money(n) { return '$' + Math.round(n).toLocaleString(); }
-
-function updateCalc() {
-  const price = parseFloat(calcPrice.value);
-  const downPct = parseFloat(calcDown.value);
-  const rate = parseFloat(calcRate.value);
-  const downAmt = price * (downPct / 100);
-  const principal = price - downAmt;
-  const monthlyRate = (rate / 100) / 12;
-  const numPayments = loanTermYears * 12;
-
-  let payment;
-  if (monthlyRate === 0) {
-    payment = principal / numPayments;
-  } else {
-    payment = principal * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) / (Math.pow(1 + monthlyRate, numPayments) - 1);
+    navLinks.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => {
+        header.classList.remove('mobile-open');
+        menuBtn.setAttribute('aria-expanded', 'false');
+        menuBtn.setAttribute('aria-label', 'Open navigation');
+        document.body.classList.remove('menu-lock');
+      });
+    });
   }
 
-  calcPriceOut.textContent = money(price);
-  calcDownOut.textContent = downPct + '% · ' + money(downAmt);
-  calcRateOut.textContent = rate + '%';
-  calcResult.textContent = money(payment) + '/mo';
-}
+  /* Active navigation */
+  const navAnchors = navLinks ? [...navLinks.querySelectorAll('a[data-nav]')] : [];
+  const sections = navAnchors
+    .map(a => document.getElementById(a.dataset.nav))
+    .filter(Boolean);
 
-[calcPrice, calcDown, calcRate].forEach(el => el.addEventListener('input', updateCalc));
-termBtns.forEach(btn => {
-  btn.addEventListener('click', () => {
-    termBtns.forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    loanTermYears = parseInt(btn.dataset.term, 10);
-    updateCalc();
+  if (sections.length && 'IntersectionObserver' in window) {
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+
+        navAnchors.forEach(a => {
+          a.classList.toggle(
+            'active',
+            a.dataset.nav === entry.target.id
+          );
+        });
+      });
+    }, {
+      rootMargin: '-35% 0px -55% 0px',
+      threshold: 0
+    });
+
+    sections.forEach(section => observer.observe(section));
+  }
+
+  /* Reveal on scroll */
+  const reveals = [...document.querySelectorAll('.reveal')];
+
+  if (
+    reducedMotion ||
+    !('IntersectionObserver' in window)
+  ) {
+    reveals.forEach(el => el.classList.add('in'));
+  } else {
+    const revealObserver = new IntersectionObserver(
+      (entries, obs) => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+
+          entry.target.classList.add('in');
+          obs.unobserve(entry.target);
+        });
+      },
+      {
+        threshold: 0.12,
+        rootMargin: '0px 0px -50px 0px'
+      }
+    );
+
+    reveals.forEach(el => revealObserver.observe(el));
+  }
+
+  /* Count-up */
+  const countEls = [...document.querySelectorAll('.count-up')];
+
+  const money = value =>
+    value.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0
+    });
+
+  function animateCount(el) {
+    const target = Number(el.dataset.target);
+
+    if (!Number.isFinite(target)) return;
+
+    const prefix = el.dataset.prefix || '';
+    const suffix = el.dataset.suffix || '';
+    const decimals = Number(el.dataset.decimals || 0);
+
+    if (reducedMotion) {
+      el.textContent =
+        `${prefix}${target.toFixed(decimals)}${suffix}`;
+      return;
+    }
+
+    const start = performance.now();
+    const duration = 1100;
+
+    const tick = now => {
+      const progress = Math.min(
+        (now - start) / duration,
+        1
+      );
+
+      const eased =
+        1 - Math.pow(1 - progress, 3);
+
+      el.textContent =
+        `${prefix}${(target * eased).toFixed(decimals)}${suffix}`;
+
+      if (progress < 1) {
+        requestAnimationFrame(tick);
+      }
+    };
+
+    requestAnimationFrame(tick);
+  }
+
+  if (countEls.length) {
+    if (
+      reducedMotion ||
+      !('IntersectionObserver' in window)
+    ) {
+      countEls.forEach(animateCount);
+    } else {
+      const countObserver = new IntersectionObserver(
+        (entries, obs) => {
+          entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+
+            animateCount(entry.target);
+            obs.unobserve(entry.target);
+          });
+        },
+        {
+          threshold: 0.55
+        }
+      );
+
+      countEls.forEach(el =>
+        countObserver.observe(el)
+      );
+    }
+  }
+
+  /* Mortgage calculator */
+  const calcPrice = document.getElementById('calcPrice');
+  const calcDown = document.getElementById('calcDown');
+  const calcRate = document.getElementById('calcRate');
+
+  const calcPriceOut =
+    document.getElementById('calcPriceOut');
+
+  const calcDownOut =
+    document.getElementById('calcDownOut');
+
+  const calcRateOut =
+    document.getElementById('calcRateOut');
+
+  const calcResult =
+    document.getElementById('calcResult');
+
+  const termBtns = [
+    ...document.querySelectorAll('.term-btn')
+  ];
+
+  let termYears = 30;
+
+  function runCalculator() {
+    if (
+      !calcPrice ||
+      !calcDown ||
+      !calcRate ||
+      !calcResult
+    ) {
+      return;
+    }
+
+    const price = Number(calcPrice.value);
+    const downPct = Number(calcDown.value);
+    const rate = Number(calcRate.value);
+
+    const downAmount =
+      price * downPct / 100;
+
+    const principal =
+      Math.max(price - downAmount, 0);
+
+    const monthlyRate =
+      rate / 100 / 12;
+
+    const payments =
+      termYears * 12;
+
+    const payment =
+      monthlyRate === 0
+        ? principal / payments
+        : (
+            principal *
+            monthlyRate *
+            Math.pow(
+              1 + monthlyRate,
+              payments
+            )
+          ) /
+          (
+            Math.pow(
+              1 + monthlyRate,
+              payments
+            ) - 1
+          );
+
+    if (calcPriceOut) {
+      calcPriceOut.textContent =
+        money(price);
+    }
+
+    if (calcDownOut) {
+      calcDownOut.textContent =
+        `${downPct}% · ${money(downAmount)}`;
+    }
+
+    if (calcRateOut) {
+      calcRateOut.textContent =
+        `${rate}%`;
+    }
+
+    calcResult.textContent =
+      money(Math.round(payment));
+  }
+
+  [
+    calcPrice,
+    calcDown,
+    calcRate
+  ].forEach(input => {
+    if (input) {
+      input.addEventListener(
+        'input',
+        runCalculator
+      );
+    }
   });
-});
-updateCalc();
 
-/* ---------- Testimonial carousel ---------- */
-const testiSlideEls = document.querySelectorAll('.testi-slide');
-const testiDotEls = document.querySelectorAll('.testi-dot');
-let testiIndex = 0;
-let testiTimer = null;
+  termBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      termYears =
+        Number(btn.dataset.term) || 30;
 
-function showTesti(i) {
-  testiSlideEls.forEach((s, idx) => s.classList.toggle('active', idx === i));
-  testiDotEls.forEach((d, idx) => d.classList.toggle('active', idx === i));
-  testiIndex = i;
-}
-function startTestiAutoplay() {
-  if (prefersReducedMotion) return;
-  testiTimer = setInterval(() => { showTesti((testiIndex + 1) % testiSlideEls.length); }, 6000);
-}
-testiDotEls.forEach(dot => {
-  dot.addEventListener('click', () => {
-    showTesti(parseInt(dot.dataset.i, 10));
-    if (testiTimer) { clearInterval(testiTimer); startTestiAutoplay(); }
+      termBtns.forEach(item => {
+        const active = item === btn;
+
+        item.classList.toggle(
+          'active',
+          active
+        );
+
+        item.setAttribute(
+          'aria-pressed',
+          String(active)
+        );
+      });
+
+      runCalculator();
+    });
   });
-});
-startTestiAutoplay();
 
-/* ---------- Contact form (front-end only) ---------- */
-const form = document.getElementById('contactForm');
-const formMsg = document.getElementById('formMsg');
-form.addEventListener('submit', (e) => {
-  e.preventDefault();
-  formMsg.textContent = "Thanks — Marci's office will get back to you shortly.";
-  form.reset();
-});
+  runCalculator();
+
+  /* Gallery filters + lightbox */
+  const galleryGrid =
+    document.getElementById('galleryGrid');
+
+  const galleryCount =
+    document.getElementById('galleryCount');
+
+  const filterButtons = [
+    ...document.querySelectorAll(
+      '.gallery-filter button'
+    )
+  ];
+
+  let figures = galleryGrid
+    ? [...galleryGrid.querySelectorAll('figure')]
+    : [];
+
+  function visibleFigures() {
+    return figures.filter(
+      fig =>
+        !fig.classList.contains('hidden')
+    );
+  }
+
+  function updateGalleryCount() {
+    if (!galleryCount) return;
+
+    const total =
+      visibleFigures().length;
+
+    galleryCount.textContent =
+      `${total} Photo${total === 1 ? '' : 's'}`;
+  }
+
+  filterButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      filterButtons.forEach(item => {
+        item.classList.toggle(
+          'active',
+          item === button
+        );
+      });
+
+      const filter =
+        button.dataset.filter;
+
+      figures.forEach(fig => {
+        fig.classList.toggle(
+          'hidden',
+          filter !== 'all' &&
+          fig.dataset.category !== filter
+        );
+      });
+
+      updateGalleryCount();
+    });
+  });
+
+  updateGalleryCount();
+
+  const lightbox =
+    document.getElementById('lightbox');
+
+  const lightboxImg =
+    document.getElementById('lightboxImg');
+
+  const lightboxCap =
+    document.getElementById('lightboxCap');
+
+  const lightboxCount =
+    document.getElementById('lightboxCount');
+
+  const lightboxClose =
+    document.getElementById('lightboxClose');
+
+  const lightboxPrev =
+    document.getElementById('lightboxPrev');
+
+  const lightboxNext =
+    document.getElementById('lightboxNext');
+
+  let lightboxIndex = 0;
+
+  function openLightbox(index) {
+    const visible =
+      visibleFigures();
+
+    if (
+      !lightbox ||
+      !lightboxImg ||
+      !visible.length
+    ) {
+      return;
+    }
+
+    lightboxIndex =
+      (index + visible.length) %
+      visible.length;
+
+    const figure =
+      visible[lightboxIndex];
+
+    const img =
+      figure.querySelector('img');
+
+    lightboxImg.src =
+      img.currentSrc || img.src;
+
+    lightboxImg.alt =
+      img.alt || '';
+
+    if (lightboxCap) {
+      lightboxCap.textContent =
+        figure.dataset.cap || '';
+    }
+
+    if (lightboxCount) {
+      lightboxCount.textContent =
+        `${lightboxIndex + 1} / ${visible.length}`;
+    }
+
+    lightbox.classList.add('open');
+
+    lightbox.setAttribute(
+      'aria-hidden',
+      'false'
+    );
+
+    document.body.classList.add(
+      'menu-lock'
+    );
+  }
+
+  function closeLightbox() {
+    if (!lightbox) return;
+
+    lightbox.classList.remove('open');
+
+    lightbox.setAttribute(
+      'aria-hidden',
+      'true'
+    );
+
+    document.body.classList.remove(
+      'menu-lock'
+    );
+  }
+
+  figures.forEach(fig => {
+    const activate = () =>
+      openLightbox(
+        visibleFigures().indexOf(fig)
+      );
+
+    fig.addEventListener(
+      'click',
+      activate
+    );
+
+    fig.addEventListener(
+      'keydown',
+      event => {
+        if (
+          event.key === 'Enter' ||
+          event.key === ' '
+        ) {
+          event.preventDefault();
+          activate();
+        }
+      }
+    );
+  });
+
+  if (lightboxClose) {
+    lightboxClose.addEventListener(
+      'click',
+      closeLightbox
+    );
+  }
+
+  if (lightboxPrev) {
+    lightboxPrev.addEventListener(
+      'click',
+      () =>
+        openLightbox(
+          lightboxIndex - 1
+        )
+    );
+  }
+
+  if (lightboxNext) {
+    lightboxNext.addEventListener(
+      'click',
+      () =>
+        openLightbox(
+          lightboxIndex + 1
+        )
+    );
+  }
+
+  if (lightbox) {
+    lightbox.addEventListener(
+      'click',
+      event => {
+        if (
+          event.target === lightbox
+        ) {
+          closeLightbox();
+        }
+      }
+    );
+  }
+
+  document.addEventListener(
+    'keydown',
+    event => {
+      if (
+        !lightbox ||
+        !lightbox.classList.contains('open')
+      ) {
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        closeLightbox();
+      }
+
+      if (event.key === 'ArrowLeft') {
+        openLightbox(
+          lightboxIndex - 1
+        );
+      }
+
+      if (event.key === 'ArrowRight') {
+        openLightbox(
+          lightboxIndex + 1
+        );
+      }
+    }
+  );
+
+  /* Testimonials */
+  const slides = [
+    ...document.querySelectorAll(
+      '.testi-slide'
+    )
+  ];
+
+  const dots = [
+    ...document.querySelectorAll(
+      '.testi-dot'
+    )
+  ];
+
+  let slideIndex = 0;
+  let slideTimer = null;
+
+  function showSlide(index) {
+    if (!slides.length) return;
+
+    slideIndex =
+      (index + slides.length) %
+      slides.length;
+
+    slides.forEach((slide, i) => {
+      slide.classList.toggle(
+        'active',
+        i === slideIndex
+      );
+    });
+
+    dots.forEach((dot, i) => {
+      dot.classList.toggle(
+        'active',
+        i === slideIndex
+      );
+    });
+  }
+
+  function restartTestimonials() {
+    if (
+      reducedMotion ||
+      slides.length < 2
+    ) {
+      return;
+    }
+
+    clearInterval(slideTimer);
+
+    slideTimer = setInterval(
+      () =>
+        showSlide(
+          slideIndex + 1
+        ),
+      6500
+    );
+  }
+
+  dots.forEach(dot => {
+    dot.addEventListener(
+      'click',
+      () => {
+        showSlide(
+          Number(dot.dataset.i) || 0
+        );
+
+        restartTestimonials();
+      }
+    );
+  });
+
+  showSlide(0);
+  restartTestimonials();
+
+  /* Contact form — no fake submission. */
+  const form =
+    document.getElementById(
+      'contactForm'
+    );
+
+  const formMsg =
+    document.getElementById(
+      'formMsg'
+    );
+
+  if (form) {
+    form.addEventListener(
+      'submit',
+      event => {
+        event.preventDefault();
+
+        if (!form.checkValidity()) {
+          form.reportValidity();
+
+          if (formMsg) {
+            formMsg.textContent =
+              'Please complete your name, email, and message.';
+          }
+
+          return;
+        }
+
+        if (formMsg) {
+          formMsg.textContent =
+            'Thanks — your message is ready to send. Please call Marci directly at (206) 919-6886 for the fastest response.';
+        }
+
+        form.reset();
+      }
+    );
+  }
+
+  /* Back to top + scroll progress */
+  const toTop =
+    document.getElementById(
+      'toTop'
+    );
+
+  const progress =
+    document.createElement(
+      'div'
+    );
+
+  progress.className =
+    'page-progress';
+
+  document.body.appendChild(
+    progress
+  );
+
+  const updateScrollUI = () => {
+    const scrollable =
+      document.documentElement.scrollHeight -
+      window.innerHeight;
+
+    progress.style.width =
+      `${
+        scrollable > 0
+          ? (
+              window.scrollY /
+              scrollable
+            ) * 100
+          : 0
+      }%`;
+
+    if (toTop) {
+      toTop.classList.toggle(
+        'show',
+        window.scrollY > 650
+      );
+    }
+  };
+
+  updateScrollUI();
+
+  window.addEventListener(
+    'scroll',
+    updateScrollUI,
+    { passive: true }
+  );
+
+  if (toTop) {
+    toTop.addEventListener(
+      'click',
+      () => {
+        window.scrollTo({
+          top: 0,
+          behavior:
+            reducedMotion
+              ? 'auto'
+              : 'smooth'
+        });
+      }
+    );
+  }
+
+  /* Gentle desktop hero parallax */
+  const hero =
+    document.querySelector(
+      '.hero'
+    );
+
+  const heroPhoto =
+    document.querySelector(
+      '.hero-photo'
+    );
+
+  if (
+    hero &&
+    heroPhoto &&
+    !reducedMotion &&
+    window.matchMedia(
+      '(hover:hover)'
+    ).matches
+  ) {
+    let raf = 0;
+
+    hero.addEventListener(
+      'mousemove',
+      event => {
+        if (raf) {
+          cancelAnimationFrame(
+            raf
+          );
+        }
+
+        raf = requestAnimationFrame(
+          () => {
+            const rect =
+              hero.getBoundingClientRect();
+
+            const x =
+              (
+                (
+                  event.clientX -
+                  rect.left
+                ) /
+                rect.width -
+                0.5
+              ) * -7;
+
+            const y =
+              (
+                (
+                  event.clientY -
+                  rect.top
+                ) /
+                rect.height -
+                0.5
+              ) * -5;
+
+            heroPhoto.style.transform =
+              `scale(1.055) translate3d(${x}px,${y}px,0)`;
+          }
+        );
+      }
+    );
+
+    hero.addEventListener(
+      'mouseleave',
+      () => {
+        heroPhoto.style.transform =
+          'scale(1.04)';
+      }
+    );
+  }
+
+})();
